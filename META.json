@@ -1,5 +1,5 @@
 {
-   "abstract" : "A module for you",
+   "abstract" : "mruby binding for perl5.",
    "author" : [
       "Tokuhiro Matsuno E<lt>tokuhirom AAJKLFJEF@ GMAIL COME<gt>"
    ],
@@ -42,7 +42,7 @@
    "provides" : {
       "mRuby" : {
          "file" : "lib/mRuby.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       }
    },
    "release_status" : "stable",
@@ -51,5 +51,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.01"
+   "version" : "0.02"
 }

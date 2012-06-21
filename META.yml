@@ -1,5 +1,5 @@
 ---
-abstract: 'A module for you'
+abstract: 'mruby binding for perl5.'
 author:
   - 'Tokuhiro Matsuno E<lt>tokuhirom AAJKLFJEF@ GMAIL COME<gt>'
 build_requires:
@@ -23,9 +23,9 @@ no_index:
 provides:
   mRuby:
     file: lib/mRuby.pm
-    version: 0.01
+    version: 0.02
 requires:
   parent: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01
+version: 0.02
