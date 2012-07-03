@@ -889,9 +889,9 @@ inspect_hash(mrb_state *mrb, mrb_value hash, int recur)
   khash_t(ht) *h = RHASH_TBL(hash);
   khiter_t k;
 
-  if (recur) return mrb_str_new_cstr(mrb, "{...}");
+  if (recur) return mrb_str_new(mrb, "{...}", 5);
 
-  str = mrb_str_new_cstr(mrb, "{");
+  str = mrb_str_new(mrb, "{", 1);
   if (h && kh_size(h) > 0) {
     for (k = kh_begin(h); k != kh_end(h); k++) {
       int ai;
@@ -904,14 +904,14 @@ inspect_hash(mrb_state *mrb, mrb_value hash, int recur)
 
       str2 = mrb_inspect(mrb, kh_key(h,k));
       mrb_str_append(mrb, str, str2);
-      mrb_str_buf_cat(mrb, str, "=>", strlen("=>"));
+      mrb_str_buf_cat(mrb, str, "=>", 2);
       str2 = mrb_inspect(mrb, kh_value(h,k));
       mrb_str_append(mrb, str, str2);
 
       mrb_gc_arena_restore(mrb, ai);
     }
   }
-  mrb_str_buf_cat(mrb, str, "}", strlen("}"));//mrb_str_buf_cat2(str, "}");
+  mrb_str_buf_cat(mrb, str, "}", 1);
 
   return str;
 }
@@ -934,7 +934,7 @@ mrb_hash_inspect(mrb_state *mrb, mrb_value hash)
   khash_t(ht) *h = RHASH_TBL(hash);
 
   if (!h || kh_size(h) == 0)
-    return mrb_str_new_cstr(mrb, "{}");
+    return mrb_str_new(mrb, "{}", 2);
   return inspect_hash(mrb, hash, 0);
 }
 
@@ -965,7 +965,7 @@ mrb_hash_to_hash(mrb_state *mrb, mrb_value hash)
  *
  */
 
-static mrb_value
+mrb_value
 mrb_hash_keys(mrb_state *mrb, mrb_value hash)
 {
   khash_t(ht) *h = RHASH_TBL(hash);

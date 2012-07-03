@@ -518,6 +518,15 @@ new_sym(parser_state *p, mrb_sym sym)
   return cons((node*)NODE_SYM, (node*)sym);
 }
 
+static mrb_sym
+new_strsym(parser_state *p, node* str)
+{
+  const char *s = (const char*)str->cdr->car;
+  size_t len = (size_t)str->cdr->cdr;
+
+  return mrb_intern2(p->mrb, s, len);
+}
+
 // (:lvar . a)
 static node*
 new_lvar(parser_state *p, mrb_sym sym)
@@ -687,6 +696,13 @@ static node*
 new_dstr(parser_state *p, node *a)
 {
   return cons((node*)NODE_DSTR, a);
+}
+
+// (:dsym . a)
+static node*
+new_dsym(parser_state *p, node *a)
+{
+  return cons((node*)NODE_DSYM, new_dstr(p, a));
 }
 
 // (:backref . n)
@@ -890,7 +906,7 @@ var_reference(parser_state *p, node *lhs)
 %token <num>  tREGEXP_END
 
 %type <nd> singleton string string_interp regexp
-%type <nd> literal numeric cpath
+%type <nd> literal numeric cpath symbol
 %type <nd> top_compstmt top_stmts top_stmt
 %type <nd> bodystmt compstmt stmts stmt expr arg primary command command_call method_call
 %type <nd> expr_value arg_value primary_value
@@ -906,8 +922,8 @@ var_reference(parser_state *p, node *lhs)
 %type <nd> bv_decls opt_bv_decl bvar f_larglist lambda_body
 %type <nd> brace_block cmd_brace_block do_block lhs none fitem f_bad_arg
 %type <nd> mlhs mlhs_list mlhs_post mlhs_basic mlhs_item mlhs_node mlhs_inner
-%type <id>   fsym sym symbol operation operation2 operation3
-%type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg
+%type <id> fsym sym basic_symbol operation operation2 operation3
+%type <id> cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg
 
 %token tUPLUS		/* unary+ */
 %token tUMINUS		/* unary- */
@@ -1474,7 +1490,7 @@ fname		: tIDENTIFIER
 		;
 
 fsym		: fname
-		| symbol
+		| basic_symbol
 		;
 
 fitem		: fsym
@@ -2458,9 +2474,6 @@ opt_ensure	: keyword_ensure compstmt
 
 literal		: numeric
 		| symbol
-		    {
-		      $$ = new_sym(p, $1);
-		    }
 		;
 
 string		: tCHAR
@@ -2503,7 +2516,18 @@ string_interp	: tSTRING_PART
 regexp		: tREGEXP
 		;
 
-symbol		: tSYMBEG sym
+symbol		: basic_symbol
+		    {
+		      $$ = new_sym(p, $1);
+		    }
+		| tSYMBEG tSTRING_BEG string_interp tSTRING
+		    {
+		      p->lstate = EXPR_END;
+		      $$ = new_dsym(p, push($3, $4));
+		    }
+		;
+
+basic_symbol	: tSYMBEG sym
 		    {
 		      p->lstate = EXPR_END;
 		      $$ = $2;
@@ -2514,6 +2538,14 @@ sym		: fname
 		| tIVAR
 		| tGVAR
 		| tCVAR
+		| tSTRING
+		    {
+		      $$ = new_strsym(p, $1);
+		    }
+		| tSTRING_BEG tSTRING
+		    {
+		      $$ = new_strsym(p, $2);
+		    }
 		;
 
 numeric 	: tINTEGER
@@ -2587,7 +2619,7 @@ var_ref		: variable
 		    {
 		      char buf[16];
 
-		      snprintf(buf, 16, "%d", p->lineno);
+		      snprintf(buf, sizeof(buf), "%d", p->lineno);
 		      $$ = new_int(p, buf, 10);
 		    }
 		;
@@ -2955,7 +2987,7 @@ yyerror_i(parser_state *p, const char *fmt, int i)
 {
   char buf[256];
 
-  snprintf(buf, 256, fmt, i);
+  snprintf(buf, sizeof(buf), fmt, i);
   yyerror(p, buf);
 }
 
@@ -2995,7 +3027,7 @@ yywarning_s(parser_state *p, const char *fmt, const char *s)
 {
   char buf[256];
 
-  snprintf(buf, 256, fmt, s);
+  snprintf(buf, sizeof(buf), fmt, s);
   yywarning(p, buf);
 }
 
@@ -3201,9 +3233,9 @@ toklen(parser_state *p)
 #define IS_LABEL_SUFFIX(n) (peek_n(p, ':',(n)) && !peek_n(p, ':', (n)+1))
 
 static unsigned long
-scan_oct(const char *start, int len, int *retlen)
+scan_oct(const int *start, int len, int *retlen)
 {
-  const char *s = start;
+  const int *s = start;
   unsigned long retval = 0;
 
   while (len-- && *s >= '0' && *s <= '7') {
@@ -3215,10 +3247,10 @@ scan_oct(const char *start, int len, int *retlen)
 }
 
 static unsigned long
-scan_hex(const char *start, int len, int *retlen)
+scan_hex(const int *start, int len, int *retlen)
 {
   static const char hexdigit[] = "0123456789abcdef0123456789ABCDEF";
-  register const char *s = start;
+  register const int *s = start;
   register unsigned long retval = 0;
   char *tmp;
 
@@ -3264,7 +3296,7 @@ read_escape(parser_state *p)
   case '0': case '1': case '2': case '3': /* octal constant */
   case '4': case '5': case '6': case '7':
     {
-       char buf[3];
+       int buf[3];
        int i;
 
        for (i=0; i<3; i++) {
@@ -3281,7 +3313,7 @@ read_escape(parser_state *p)
 
   case 'x':	/* hex constant */
     {
-      char buf[2];
+      int buf[2];
       int i;
 
       for (i=0; i<2; i++) {
@@ -3392,8 +3424,8 @@ parse_string(parser_state *p, int term)
   return tSTRING;
 }
 
-static int
-parse_qstring(parser_state *p, int term)
+static node*
+qstring_node(parser_state *p, int term)
 {
   int c;
 
@@ -3429,9 +3461,20 @@ parse_qstring(parser_state *p, int term)
   }
 
   tokfix(p);
-  yylval.nd = new_str(p, tok(p), toklen(p));
   p->lstate = EXPR_END;
-  return tSTRING;
+  return new_str(p, tok(p), toklen(p));
+}
+
+static int
+parse_qstring(parser_state *p, int term)
+{
+  node *nd = qstring_node(p, term);
+
+  if (nd) {
+    yylval.nd = new_str(p, tok(p), toklen(p));
+    return tSTRING;
+  }
+  return 0;
 }
 
 static int
@@ -3702,7 +3745,7 @@ parser_yylex(parser_state *p)
 	}
 	if (c2) {
 	  char buf[256];
-	  snprintf(buf, 256, "invalid character syntax; use ?\\%c", c2);
+	  snprintf(buf, sizeof(buf), "invalid character syntax; use ?\\%c", c2);
 	  yyerror(p, buf);
 	}
       }
@@ -4123,21 +4166,7 @@ parser_yylex(parser_state *p)
       p->lstate = EXPR_BEG;
       return ':';
     }
-    switch (c) {
-    case '\'':
-#if 0
-      p->lex_strterm = new_strterm(p, str_ssym, c, 0);
-#endif
-      break;
-    case '"':
-#if 0
-      p->lex_strterm = new_strterm(p, str_dsym, c, 0);
-#endif
-      break;
-    default:
-      pushback(p, c);
-      break;
-    }
+    pushback(p, c);
     p->lstate = EXPR_FNAME;
     return tSYMBEG;
 
@@ -4542,7 +4571,7 @@ parser_yylex(parser_state *p)
 	    pushback(p, c);
 	  }
 	}
-	if (result == 0 && isupper(tok(p)[0])) {
+	if (result == 0 && isupper((int)tok(p)[0])) {
 	  result = tCONSTANT;
 	}
 	else {

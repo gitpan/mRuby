@@ -880,27 +880,27 @@ inspect_ary(mrb_state *mrb, mrb_value ary, mrb_value list)
 {
   int i;
   mrb_value s, arystr;
-  char *head = "[";
-  char *sep = ", ";
-  char *tail = "]";
+  char head[] = { '[' };
+  char sep[] = { ',', ' ' };
+  char tail[] = { ']' };
 
   /* check recursive */
   for(i=0; i<RARRAY_LEN(list); i++) {
     if (mrb_obj_equal(mrb, ary, RARRAY_PTR(list)[i])) {
-      return mrb_str_new2(mrb, "[...]");
+      return mrb_str_new(mrb, "[...]", 5);
     }
   }
 
   mrb_ary_push(mrb, list, ary);
 
   arystr = mrb_str_buf_new(mrb, 64);
-  mrb_str_buf_cat(mrb, arystr, head, strlen(head));
+  mrb_str_buf_cat(mrb, arystr, head, sizeof(head));
 
   for(i=0; i<RARRAY_LEN(ary); i++) {
     int ai = mrb_gc_arena_save(mrb);
 
     if (i > 0) {
-      mrb_str_buf_cat(mrb, arystr, sep, strlen(sep));
+      mrb_str_buf_cat(mrb, arystr, sep, sizeof(sep));
     }
     if (mrb_type(RARRAY_PTR(ary)[i]) == MRB_TT_ARRAY) {
       s = inspect_ary(mrb, RARRAY_PTR(ary)[i], list);
@@ -911,7 +911,7 @@ inspect_ary(mrb_state *mrb, mrb_value ary, mrb_value list)
     mrb_gc_arena_restore(mrb, ai);
   }
 
-  mrb_str_buf_cat(mrb, arystr, tail, strlen(tail));
+  mrb_str_buf_cat(mrb, arystr, tail, sizeof(tail));
   mrb_ary_pop(mrb, list);
 
   return arystr;
@@ -929,7 +929,7 @@ inspect_ary(mrb_state *mrb, mrb_value ary, mrb_value list)
 static mrb_value
 mrb_ary_inspect(mrb_state *mrb, mrb_value ary)
 {
-  if (RARRAY_LEN(ary) == 0) return mrb_str_new2(mrb, "[]");
+  if (RARRAY_LEN(ary) == 0) return mrb_str_new(mrb, "[]", 2);
   #if 0 /* THREAD */
     return mrb_exec_recursive(inspect_ary_r, ary, 0);
   #else

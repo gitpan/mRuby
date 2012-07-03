@@ -117,7 +117,7 @@ mrb_obj_inspect(mrb_state *mrb, mrb_value obj)
     return mrb_any_to_s(mrb, obj);
   }
   else if (mrb_nil_p(obj)) {
-    return mrb_str_new_cstr(mrb, "nil");
+    return mrb_str_new(mrb, "nil", 3);
   }
   return mrb_funcall(mrb, obj, "to_s", 0, 0);
 }
@@ -338,7 +338,12 @@ mrb_singleton_class_clone(mrb_state *mrb, mrb_value obj)
       if (klass->iv) {
           clone->iv = klass->iv;
       }
-    clone->mt = kh_init(mt, mrb);
+      if (klass->mt) {
+          clone->mt = kh_copy(mt, mrb, klass->mt);
+      }
+      else {
+          clone->mt = kh_init(mt, mrb);
+      }
       clone->tt = MRB_TT_SCLASS;
       return clone;
   }
@@ -361,10 +366,11 @@ init_copy(mrb_state *mrb, mrb_value dest, mrb_value obj)
       case MRB_TT_CLASS:
       case MRB_TT_MODULE:
         if (ROBJECT(dest)->iv) {
+            kh_destroy(iv, ROBJECT(dest)->iv);
             ROBJECT(dest)->iv = 0;
         }
         if (ROBJECT(obj)->iv) {
-            ROBJECT(dest)->iv = ROBJECT(obj)->iv;
+            ROBJECT(dest)->iv = kh_copy(iv, mrb, ROBJECT(obj)->iv);
         }
         break;
 
@@ -446,9 +452,8 @@ mrb_obj_dup(mrb_state *mrb, mrb_value obj)
         mrb_raise(mrb, E_TYPE_ERROR, "can't dup %s", mrb_obj_classname(mrb, obj));
     }
     p = mrb_obj_alloc(mrb, mrb_type(obj), mrb_obj_class(mrb, obj));
-    //init_copy(dup, obj);
     dup = mrb_obj_value(p);
-    mrb_funcall(mrb, dup, "initialize_copy", 1, obj);
+    init_copy(mrb, dup, obj);
 
     return dup;
 }
@@ -706,46 +711,6 @@ mrb_obj_ivar_set(mrb_state *mrb, mrb_value self)
   id = mrb_to_id(mrb, key);
   mrb_iv_set(mrb, self, id, val);
   return val;
-}
-
-/* 15.3.1.3.23 */
-/*
- *  call-seq:
- *     obj.instance_variables    -> array
- *
- *  Returns an array of instance variable names for the receiver. Note
- *  that simply defining an accessor does not create the corresponding
- *  instance variable.
- *
- *     class Fred
- *       attr_accessor :a1
- *       def initialize
- *         @iv = 3
- *       end
- *     end
- *     Fred.new.instance_variables   #=> [:@iv]
- */
-mrb_value
-mrb_obj_instance_variables(mrb_state *mrb, mrb_value self)
-{
-    mrb_value ary;
-    kh_iv_t *h = RCLASS_IV_TBL(self);
-    khint_t i;
-    const char* p;
-
-    ary = mrb_ary_new(mrb);
-    if (h) {
-      for (i=0;i<kh_end(h);i++) {
-        if (kh_exist(h, i)) {
-          p = mrb_sym2name(mrb, kh_key(h,i));
-          if (*p == '@') {
-            if (mrb_type(kh_value(h, i)) != MRB_TT_UNDEF)
-              mrb_ary_push(mrb, ary, mrb_str_new_cstr(mrb, p));
-          }
-        }
-      }
-    }
-    return ary;
 }
 
 /* 15.3.1.3.24 */
@@ -1203,7 +1168,7 @@ mrb_init_kernel(mrb_state *mrb)
   mrb_define_method(mrb, krn, "singleton_methods",          mrb_obj_singleton_methods_m,     ARGS_ANY());     /* 15.3.1.3.45 */
   mrb_define_method(mrb, krn, "to_s",                       mrb_any_to_s,                    ARGS_NONE());    /* 15.3.1.3.46 */
 
-#ifdef ENABLE_KERNEL_SPRINTF
+#ifdef ENABLE_SPRINTF
   mrb_define_method(mrb, krn, "sprintf",                    mrb_f_sprintf,                   ARGS_ANY());     /* in sprintf.c */
   mrb_define_method(mrb, krn, "format",                     mrb_f_sprintf,                   ARGS_ANY());     /* in sprintf.c */
 #endif

@@ -220,7 +220,9 @@ mrb_str_buf_cat(mrb_state *mrb, mrb_value str, const char *ptr, int len)
 mrb_value
 mrb_str_new(mrb_state *mrb, const char *p, int len)
 {
-  struct RString *s = str_new(mrb, p, len);
+  struct RString *s;
+
+  s = str_new(mrb, p, len);
   return mrb_obj_value(s);
 }
 
@@ -290,7 +292,7 @@ mrb_str_literal(mrb_state *mrb, mrb_value str)
   struct RString *s, *orig;
   struct mrb_shared_string *shared;
 
-  s = str_new(mrb, 0, 0);
+  s = str_alloc(mrb, mrb->string_class);
   orig = mrb_str_ptr(str);
   if (!(orig->flags & MRB_STR_SHARED)) {
     str_make_shared(mrb, mrb_str_ptr(str));
@@ -1547,10 +1549,17 @@ str_replace(mrb_state *mrb, struct RString *s1, struct RString *s2)
 {
   if (s2->flags & MRB_STR_SHARED) {
   L_SHARE:
+    if (s1->flags & MRB_STR_SHARED){
+      mrb_str_decref(mrb, s1->aux.shared);
+    }
+    else {
+      mrb_free(mrb, s1->ptr);
+    }
     s1->ptr = s2->ptr;
     s1->len = s2->len;
     s1->aux.shared = s2->aux.shared;
     s1->flags |= MRB_STR_SHARED;
+    s1->aux.shared->refcnt++;
   }
   else if (s2->len > STR_REPLACE_SHARED_MIN) {
     str_make_shared(mrb, s2);
@@ -1559,6 +1568,7 @@ str_replace(mrb_state *mrb, struct RString *s1, struct RString *s2)
   else {
     if (s1->flags & MRB_STR_SHARED) {
       mrb_str_decref(mrb, s1->aux.shared);
+      s1->flags &= ~MRB_STR_SHARED;
       s1->ptr = mrb_malloc(mrb, s2->len+1);
     }
     else {
@@ -1567,7 +1577,7 @@ str_replace(mrb_state *mrb, struct RString *s1, struct RString *s2)
     memcpy(s1->ptr, s2->ptr, s2->len);
     s1->ptr[s2->len] = 0;
     s1->len = s2->len;
-    s2->aux.capa = s2->len;
+    s1->aux.capa = s2->len;
   }
   return mrb_obj_value(s1);
 }
@@ -1969,7 +1979,7 @@ scan_once(mrb_state *mrb, mrb_value str, mrb_value pat, mrb_int *start)
     if (regs->num_regs == 1) {
       return mrb_reg_nth_match(mrb, 0, match);
     }
-    result = mrb_ary_new_capa(mrb, regs->num_regs);//mrb_ary_new2(regs->num_regs);
+    result = mrb_ary_new_capa(mrb, regs->num_regs);
     for (i=1; i < regs->num_regs; i++) {
       mrb_ary_push(mrb, result, mrb_reg_nth_match(mrb, i, match));
     }
@@ -2515,6 +2525,7 @@ bad:
       printf("Integer");
   return mrb_fixnum_value(0);
 }
+
 char *
 mrb_string_value_cstr(mrb_state *mrb, mrb_value *ptr)
 {
@@ -2533,10 +2544,8 @@ mrb_str_to_inum(mrb_state *mrb, mrb_value str, int base, int badcheck)
   char *s;
   int len;
 
-  //StringValue(str);
   mrb_string_value(mrb, &str);
   if (badcheck) {
-    //s = StringValueCStr(str);
     s = mrb_string_value_cstr(mrb, &str);
   }
   else {
@@ -2947,7 +2956,7 @@ mrb_str_inspect(mrb_state *mrb, mrb_value str)
 {
     const char *p, *pend;
     char buf[CHAR_ESC_LEN + 1];
-    mrb_value result = mrb_str_new_cstr(mrb, "\"");
+    mrb_value result = mrb_str_new(mrb, "\"", 1);
 
     p = RSTRING_PTR(str); pend = RSTRING_END(str);
     for (;p < pend; p++) {
@@ -2982,12 +2991,12 @@ mrb_str_inspect(mrb_state *mrb, mrb_value str)
           continue;
       }
       else {
-          sprintf(buf, "\\%03o", c & 0377);
-          mrb_str_buf_cat(mrb, result, buf, strlen(buf));
+	int n = sprintf(buf, "\\%03o", c & 0377);
+	mrb_str_buf_cat(mrb, result, buf, n);
           continue;
       }
     }
-    mrb_str_buf_cat(mrb, result, "\"", strlen("\""));
+    mrb_str_buf_cat(mrb, result, "\"", 1);
 
     return result;
 }

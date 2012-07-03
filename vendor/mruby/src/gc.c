@@ -90,7 +90,9 @@ typedef struct {
     struct RArray array;
     struct RHash hash;
     struct RRange range;
+#ifdef ENABLE_STRUCT
     struct RStruct structdata;
+#endif
     struct RProc procdata;
 #ifdef ENABLE_REGEXP
     struct RMatch match;
@@ -345,8 +347,8 @@ gc_mark_children(mrb_state *mrb, struct RBasic *obj)
     break;
 
   case MRB_TT_CLASS:
-  case MRB_TT_SCLASS:
   case MRB_TT_MODULE:
+  case MRB_TT_SCLASS:
     {
       struct RClass *c = (struct RClass*)obj;
 
@@ -430,6 +432,18 @@ gc_mark_children(mrb_state *mrb, struct RBasic *obj)
     break;
 #endif
 
+#ifdef ENABLE_STRUCT
+  case MRB_TT_STRUCT:
+    {
+      struct RStruct *s = (struct RStruct*)obj;
+      long i;
+      for (i=0; i<s->len; i++){
+        mrb_gc_mark_value(mrb, s->ptr[i]);
+      }
+    }
+    break;
+#endif
+
   default:
     break;
   }
@@ -502,12 +516,19 @@ obj_free(mrb_state *mrb, struct RBasic *obj)
     mrb_free(mrb, ((struct RRange*)obj)->edges);
     break;
 
+#ifdef ENABLE_STRUCT
+  case MRB_TT_STRUCT:
+    mrb_free(mrb, ((struct RStruct*)obj)->ptr);
+    break;
+#endif
+
   case MRB_TT_DATA:
     {
       struct RData *d = (struct RData*)obj;
       if (d->type->dfree) {
         d->type->dfree(mrb, d->data);
       }
+      mrb_gc_free_iv(mrb, (struct RObject*)obj);
     }
     break;
 
@@ -587,6 +608,7 @@ gc_gray_mark(mrb_state *mrb, struct RBasic *obj)
     break;
 
   case MRB_TT_OBJECT:
+  case MRB_TT_DATA:
     children += mrb_gc_mark_iv_size(mrb, (struct RObject*)obj);
     break;
 
@@ -617,6 +639,15 @@ gc_gray_mark(mrb_state *mrb, struct RBasic *obj)
     break;
   case MRB_TT_REGEX:
     children+=1;
+    break;
+#endif
+
+#ifdef ENABLE_STRUCT
+  case MRB_TT_STRUCT:
+    {
+      struct RStruct *s = (struct RStruct*)obj;
+      children += s->len;
+    }
     break;
 #endif
 

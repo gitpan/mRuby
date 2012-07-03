@@ -93,7 +93,7 @@ mrb_struct_s_members_m(mrb_state *mrb, mrb_value klass)
     mrb_value *p, *pend;
 
     members = mrb_struct_s_members(mrb, klass);
-    ary = mrb_ary_new_capa(mrb, RARRAY_LEN(members));//mrb_ary_new2(RARRAY_LEN(members));
+    ary = mrb_ary_new_capa(mrb, RARRAY_LEN(members));
     p = RARRAY_PTR(members); pend = p + RARRAY_LEN(members);
     while (p < pend) {
       mrb_ary_push(mrb, ary, *p);
@@ -286,8 +286,8 @@ make_struct(mrb_state *mrb, mrb_value name, mrb_value members, struct RClass * k
     nstr = mrb_obj_value(c);
     mrb_iv_set(mrb, nstr, mrb_intern(mrb, "__members__"), members);
 
-    mrb_define_class_method(mrb, c, "new", mrb_class_new_instance_m, ARGS_ANY());
-    mrb_define_class_method(mrb, c, "[]", mrb_class_new_instance_m, ARGS_ANY());
+    mrb_define_class_method(mrb, c, "new", mrb_instance_new, ARGS_ANY());
+    mrb_define_class_method(mrb, c, "[]", mrb_instance_new, ARGS_ANY());
     mrb_define_class_method(mrb, c, "members", mrb_struct_s_members_m, ARGS_NONE());
     //RSTRUCT(nstr)->basic.c->super = c->c;
     ptr_members = RARRAY_PTR(members);
@@ -493,7 +493,7 @@ static mrb_value
 inspect_struct(mrb_state *mrb, mrb_value s, mrb_value dummy, int recur)
 {
     const char *cn = mrb_class_name(mrb, mrb_obj_class(mrb, s));
-    mrb_value members, str = mrb_str_new2(mrb, "#<struct ");
+    mrb_value members, str = mrb_str_new(mrb, "#<struct ", 9);
     mrb_value *ptr, *ptr_members;
     long i, len;
 
@@ -521,8 +521,11 @@ inspect_struct(mrb_state *mrb, mrb_value s, mrb_value dummy, int recur)
       slot = ptr_members[i];
       id = SYM2ID(slot);
       if (mrb_is_local_id(id) || mrb_is_const_id(id)) {
-        //mrb_str_append(str, mrb_id2str(id));
-        mrb_str_append(mrb, str, mrb_str_new_cstr(mrb, mrb_sym2name(mrb, id)));
+	const char *name;
+	int len;
+
+	name = mrb_sym2name_len(mrb, id, &len);
+        mrb_str_append(mrb, str, mrb_str_new(mrb, name, len));
       }
       else {
           mrb_str_append(mrb, str, mrb_inspect(mrb, slot));
@@ -804,9 +807,7 @@ mrb_init_struct(mrb_state *mrb)
 {
   struct RClass *st;
   st = mrb_define_class(mrb, "Struct",  mrb->object_class);
-  //mrb_include_module(mrb_cStruct, rb_mEnumerable);
 
-  //mrb_undef_alloc_func(mrb_cStruct);
   mrb_define_class_method(mrb, st, "new",             mrb_struct_s_def,       ARGS_ANY());  /* 15.2.18.3.1  */
 
   mrb_define_method(mrb, st,       "==",              mrb_struct_equal,       ARGS_REQ(1)); /* 15.2.18.4.1  */

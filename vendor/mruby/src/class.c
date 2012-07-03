@@ -37,7 +37,7 @@ mrb_gc_mark_mt(mrb_state *mrb, struct RClass *c)
     if (kh_exist(h, k)){
       struct RProc *m = kh_value(h, k);
       if (m) {
-        paint_black(m);
+	mrb_gc_mark(mrb, (struct RBasic*)m);
       }
     }
   }
@@ -966,6 +966,8 @@ mrb_value
 mrb_class_path(mrb_state *mrb, struct RClass *c)
 {
   mrb_value path;
+  const char *name;
+  int len;
 
   path = mrb_obj_iv_get(mrb, (struct RObject*)c, mrb_intern(mrb, "__classpath__"));
   if (mrb_nil_p(path)) {
@@ -973,14 +975,16 @@ mrb_class_path(mrb_state *mrb, struct RClass *c)
     mrb_sym sym = class_sym(mrb, c, outer);
     if (outer && outer != mrb->object_class) {
       mrb_value base = mrb_class_path(mrb, outer);
-      path = mrb_str_plus(mrb, base, mrb_str_new_cstr(mrb, "::"));
-      mrb_str_concat(mrb, path, mrb_str_new_cstr(mrb, mrb_sym2name(mrb, sym)));
+      path = mrb_str_plus(mrb, base, mrb_str_new(mrb, "::", 2));
+      name = mrb_sym2name_len(mrb, sym, &len);
+      mrb_str_concat(mrb, path, mrb_str_new(mrb, name, len));
     }
     else if (sym == 0) {
       return mrb_nil_value();
     }
     else {
-      path = mrb_str_new_cstr(mrb, mrb_sym2name(mrb, sym));
+      name = mrb_sym2name_len(mrb, sym, &len);
+      path = mrb_str_new(mrb, name, len);
     }
     mrb_obj_iv_set(mrb, (struct RObject*)c, mrb_intern(mrb, "__classpath__"), path);
   }
@@ -1046,6 +1050,9 @@ mrb_class_new(mrb_state *mrb, struct RClass *super)
     mrb_check_inheritable(mrb, super);
   }
   c = boot_defclass(mrb, super);
+  if (super){
+    MRB_SET_INSTANCE_TT(c, MRB_INSTANCE_TT(super));
+  }
   make_metaclass(mrb, c);
 
   return c;
@@ -1058,6 +1065,7 @@ struct RClass *
 mrb_module_new(mrb_state *mrb)
 {
   struct RClass *m = (struct RClass*)mrb_obj_alloc(mrb, MRB_TT_MODULE, mrb->module_class);
+  m->mt = kh_init(mt, mrb);
 
   return m;
 }
@@ -1114,9 +1122,8 @@ mrb_define_alias(mrb_state *mrb, struct RClass *klass, const char *name1, const 
 static mrb_value
 mrb_mod_to_s(mrb_state *mrb, mrb_value klass)
 {
-  //if (FL_TEST(klass, FL_SINGLETON)) {
   if (mrb_type(klass) == MRB_TT_SCLASS) {
-    mrb_value s = mrb_str_new_cstr(mrb, "#<");
+    mrb_value s = mrb_str_new(mrb, "#<", 2);
     mrb_value v = mrb_iv_get(mrb, klass, mrb_intern(mrb, "__attached__"));
 
     mrb_str_cat2(mrb, s, "Class:");
@@ -1135,25 +1142,25 @@ mrb_mod_to_s(mrb_state *mrb, mrb_value klass)
   }
   else {
     struct RClass *c = mrb_class_ptr(klass);
-    const char *cn = mrb_class_name(mrb,  c);
+    const char *cn = mrb_class_name(mrb, c);
 
     if (!cn) {
       char buf[256];
-
+      int n = 0;
 
       switch (mrb_type(klass)) {
         case MRB_TT_CLASS:
-          snprintf(buf, 256, "#<Class:%p>", c);
+          n = snprintf(buf, sizeof(buf), "#<Class:%p>", c);
           break;
 
         case MRB_TT_MODULE:
-          snprintf(buf, 256, "#<Module:%p>", c);
+          n = snprintf(buf, sizeof(buf), "#<Module:%p>", c);
           break;
 
         default:
           break;
       }
-      return mrb_str_dup(mrb, mrb_str_new_cstr(mrb, buf));
+      return mrb_str_dup(mrb, mrb_str_new(mrb, buf, n));
     }
     else {
       return mrb_str_dup(mrb, mrb_str_new_cstr(mrb, cn));
@@ -1223,7 +1230,7 @@ static mrb_sym
 mrb_sym_value(mrb_state *mrb, mrb_value val)
 {
   if(val.tt == MRB_TT_STRING) {
-    return mrb_intern(mrb, RSTRING_PTR(val));
+    return mrb_intern_str(mrb, val);
   }
   else if(val.tt != MRB_TT_SYMBOL) {
     mrb_value obj = mrb_funcall(mrb, val, "inspect", 0);

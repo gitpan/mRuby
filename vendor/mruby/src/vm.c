@@ -292,10 +292,11 @@ static void
 localjump_error(mrb_state *mrb, const char *kind)
 {
   char buf[256];
+  int len;
   mrb_value exc;
 
-  snprintf(buf, 256, "unexpected %s", kind);
-  exc = mrb_exc_new(mrb, E_LOCALJUMP_ERROR, buf, strlen(buf));
+  len = snprintf(buf, sizeof(buf), "unexpected %s", kind);
+  exc = mrb_exc_new(mrb, E_LOCALJUMP_ERROR, buf, len);
   mrb->exc = (struct RObject*)mrb_object(exc);
 }
 
@@ -303,18 +304,19 @@ static void
 argnum_error(mrb_state *mrb, int num)
 {
   char buf[256];
+  int len;
   mrb_value exc;
 
   if (mrb->ci->mid) {
-    snprintf(buf, 256, "'%s': wrong number of arguments (%d for %d)",
-	     mrb_sym2name(mrb, mrb->ci->mid),
-	     mrb->ci->argc, num);
+    len = snprintf(buf, sizeof(buf), "'%s': wrong number of arguments (%d for %d)",
+		   mrb_sym2name(mrb, mrb->ci->mid),
+		   mrb->ci->argc, num);
   }
   else {
-    snprintf(buf, 256, "wrong number of arguments (%d for %d)",
-	     mrb->ci->argc, num);
+    len = snprintf(buf, sizeof(buf), "wrong number of arguments (%d for %d)",
+		   mrb->ci->argc, num);
   }
-  exc = mrb_exc_new(mrb, E_ARGUMENT_ERROR, buf, strlen(buf));
+  exc = mrb_exc_new(mrb, E_ARGUMENT_ERROR, buf, len);
   mrb->exc = (struct RObject*)mrb_object(exc);
 }
 
@@ -392,8 +394,8 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
   mrb_value *regs = NULL;
   mrb_code i;
   int ai = mrb->arena_idx;
+  jmp_buf *prev_jmp = mrb->jmp;
   jmp_buf c_jmp;
-  jmp_buf *prev_jmp = NULL;
 
 #ifdef DIRECT_THREADED
   static void *optable[] = {
@@ -422,7 +424,6 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
 
 
   if (setjmp(c_jmp) == 0) {
-    prev_jmp = mrb->jmp;
     mrb->jmp = &c_jmp;
   }
   else {
@@ -710,6 +711,7 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
       if (ci->argc == CALL_MAXARGS) ci->argc = -1;
       ci->target_class = m->target_class;
       ci->pc = pc + 1;
+      ci->acc = a;
 
       /* prepare stack */
       mrb->stack += a;
@@ -724,9 +726,6 @@ mrb_run(mrb_state *mrb, struct RProc *proc, mrb_value self)
         NEXT;
       }
       else {
-        /* fill callinfo */
-        ci->acc = a;
-
         /* setup environment for calling method */
         proc = mrb->ci->proc = m;
         irep = m->body.irep;
